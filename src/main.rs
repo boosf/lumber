@@ -2,8 +2,7 @@ mod client;
 
 use std::cmp;
 use std::io::{self, ErrorKind};
-use std::num::ParseIntError;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::AsyncReadExt;
 use tokio::net::{TcpListener, TcpStream};
 
 const MAX_BUF_SIZE: usize = 1024;
@@ -42,7 +41,7 @@ async fn handle_client(mut socket: TcpStream) -> tokio::io::Result<()> {
         let remaining = str_buf.capacity() - str_buf.len();
         let end: usize = cmp::min(MAX_BUF_SIZE, remaining);
 
-        for c in message.chars().skip(start).take(end - start) {
+        for c in message.chars().skip(start).take(end) {
             str_buf.push(c);
         }
 
