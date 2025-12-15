@@ -26,3 +26,22 @@ impl FromStr for Command {
         }
     }
 }
+
+#[derive(Debug, Error)]
+pub enum ExecuteError {}
+
+#[derive(Debug)]
+pub enum ExecuteStatus {
+    Success = 0,
+    Failed = 1,
+}
+
+#[derive(Debug)]
+pub struct ExecuteResult {
+    body: Option<String>,
+    status: ExecuteStatus,
+}
+
+trait CommandExecutor {
+    fn execute() -> Result<ExecuteResult, ExecuteError>;
+}
