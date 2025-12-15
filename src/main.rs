@@ -15,7 +15,9 @@ async fn main() -> tokio::io::Result<()> {
 }
 
 async fn handle_client(mut socket: TcpStream) -> tokio::io::Result<()> {
-    let out = parser::parse_body(&mut socket).await?;
-    println!("Msg: {}", out);
+    match parser::parse_body(&mut socket).await {
+        Ok(out) => println!("Result: {:?}", out),
+        Err(e) => eprintln!("Error: {}", e),
+    };
     Ok(())
 }
