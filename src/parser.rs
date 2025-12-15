@@ -12,8 +12,8 @@ const MAX_BUF_SIZE: usize = 1024;
 
 #[derive(Debug)]
 pub struct Body {
-    message: String,
-    command: command::Command,
+    pub message: String,
+    pub command: command::Command,
 }
 
 pub async fn parse_body(socket: &mut TcpStream) -> tokio::io::Result<Body> {
