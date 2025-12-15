@@ -1,23 +1,99 @@
-const DELIM: char = ';';
-const MAX_HEADER_SIZE: usize = 10;
+use crate::command::{self};
+use std::cmp;
+use std::io::{self, ErrorKind};
+use std::num::ParseIntError;
+use thiserror::Error;
+use tokio::io::AsyncReadExt;
+use tokio::net::TcpStream;
 
-pub struct Header {
-    pub start_idx: usize,
-    pub size: usize,
+const DELIM: char = ',';
+const HEADER_END: char = ';';
+const MAX_BUF_SIZE: usize = 1024;
+
+#[derive(Debug, Error)]
+pub enum ParseHeaderError {
+    #[error("missing header end")]
+    MissingHeaderEnd,
+
+    #[error("missing size")]
+    MissingSize,
+
+    #[error("missing command")]
+    MissingCommand,
+
+    #[error("invalid size")]
+    InvalidSize {
+        #[source]
+        source: ParseIntError,
+    },
+
+    #[error("invalid command")]
+    InvalidCommand {
+        #[source]
+        source: command::ParseCommandError,
+    },
 }
 
-pub fn parse_header(msg: &str) -> Result<Header, ()> {
-    let mut msg_size = String::with_capacity(MAX_HEADER_SIZE);
-    for (idx, c) in msg.chars().enumerate() {
-        if c == DELIM {
-            let size = msg_size.parse::<usize>().map_err(|_| ())?;
-            let header = Header {
-                size: size,
-                start_idx: idx + 1,
-            };
-            return Ok(header);
+#[derive(Debug)]
+struct Header {
+    start_idx: usize,
+    msg_size: usize,
+    command: command::Command,
+}
+
+pub async fn parse_body(socket: &mut TcpStream) -> tokio::io::Result<String> {
+    let mut out: Option<String> = None;
+    loop {
+        let mut buf = [0; MAX_BUF_SIZE];
+        let n = socket.read(&mut buf).await?;
+        let message = String::from_utf8_lossy(&buf[..n]);
+
+        let mut start: usize = 0;
+
+        if out.is_none() {
+            let header = parse_header(&message)
+                .map_err(|_| io::Error::new(ErrorKind::InvalidData, "failed to parse header"))?;
+            start = header.start_idx;
+            out = Some(String::with_capacity(header.msg_size));
         }
-        msg_size.push(c);
+
+        let str_buf = out.as_mut().unwrap();
+        let remaining = str_buf.capacity() - str_buf.len();
+        let end: usize = cmp::min(MAX_BUF_SIZE, remaining);
+
+        for c in message.chars().skip(start).take(end) {
+            str_buf.push(c);
+        }
+
+        if str_buf.capacity() == str_buf.len() {
+            let val = out.take().unwrap();
+            return Ok(val);
+        }
     }
-    Err(())
+}
+
+fn parse_header(msg: &str) -> Result<Header, ParseHeaderError> {
+    let mut msg_splt = msg.split(HEADER_END);
+    let header = msg_splt.next().ok_or(ParseHeaderError::MissingHeaderEnd)?;
+    let mut header_splt = header.split(DELIM);
+
+    let size_str = header_splt.next().ok_or(ParseHeaderError::MissingSize)?;
+    let cmd_str = header_splt.next().ok_or(ParseHeaderError::MissingCommand)?;
+
+    let msg_size = size_str
+        .parse::<usize>()
+        .map_err(|e| ParseHeaderError::InvalidSize { source: e })?;
+    let command = cmd_str
+        .parse::<command::Command>()
+        .map_err(|e| ParseHeaderError::InvalidCommand { source: e })?;
+
+    let start_idx = msg
+        .find(HEADER_END)
+        .ok_or(ParseHeaderError::MissingHeaderEnd)?;
+
+    Ok(Header {
+        start_idx,
+        msg_size,
+        command: command,
+    })
 }
